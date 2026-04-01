@@ -13,12 +13,14 @@ class Chat:
                 {
                     # most important content for sys prompt is length of response
                     "role": "system",
-                    "content": "Write the output in 1-2 sentences."
+                    "content": "Write the output in 1-2 sentences. Talk like pirate."
                 },
             ]
     def send_message(self, message):
         self.messages.append(
             {
+                # system: never change; user: changes a lot;
+                # the message that you are sending to the AI
                 'role': 'user',
                 'content': message
             }
@@ -29,7 +31,7 @@ class Chat:
         )
         result = chat_completion.choices[0].message.content
         self.messages.append({
-            'role': 'assistent',
+            'role': 'assistant',
             'content': result
         })
         return result
