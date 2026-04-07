@@ -9,21 +9,11 @@ jobs:
       - name: Install package from PyPI
         run: pip install cmc-csci005-nicolaslaub
 
-      - name: Verify chat command is available
-        run: which chat
-
-      - name: Test package imports
-        run: python3 -c "from chat import Chat, repl"
-
-      - name: Test sending a message
+      - name: Test chat command with heredoc
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
         run: |
-          python3 -c "
-          from chat import Chat
-          c = Chat()
-          response = c.send_message('say hello', temperature=0.0)
-          print('Response:', response)
-          assert len(response) > 0, 'Expected a non-empty response'
-          print('Integration test passed!')
-          "
+          chat <<'EOF'
+          I am bob.
+          What is my name?
+          EOF

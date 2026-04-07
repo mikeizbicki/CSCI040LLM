@@ -2,3 +2,4 @@ groq
 python-dotenv
 pytest
 coverage
+supply-chain-attack-poc
