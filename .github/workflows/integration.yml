@@ -6,8 +6,10 @@ jobs:
   integration:
     runs-on: ubuntu-latest
     steps:
-      - name: Install package from PyPI
-        run: pip install cmc-csci005-nicolaslaub
+      - uses: actions/checkout@v4
+
+      - name: Install package from GitHub
+        run: pip install .
 
       - name: Test chat command with heredoc
         env:
@@ -28,6 +30,6 @@ jobs:
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
         run: |
-          output=$(chat --debug 'what is 2 plus 2? use the calculate tool')
+          output=$(chat --debug 'please use the ls tool to list files in the current directory')
           echo "$output"
           echo "$output" | grep -q '\[tool\]'
