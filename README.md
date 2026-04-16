@@ -10,7 +10,9 @@ PyPI: https://pypi.org/project/cmc-csci005-nicolaslaub/
 
 ## Demo Video
 
-https://github.com/NicoLS18/CSCI040LLM/blob/main/TTSVideo.mov
+https://youtu.be/Mu8IV-zt29s
+
+https://github.com/NicoLS18/CSCI040LLM/blob/main/TTSVideo.mov  
 
 ## Usage Examples
 

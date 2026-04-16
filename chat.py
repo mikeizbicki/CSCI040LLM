@@ -1,13 +1,17 @@
 """Docchat: a document-aware AI agent chatbot powered by the Groq LLM API."""
 import glob
+import io
 import json
 import os
+import subprocess
+import tempfile
 from groq import Groq
 from dotenv import load_dotenv
 import tools.calculate
 import tools.ls
 import tools.cat
 import tools.grep
+import tools.load_image
 
 load_dotenv()
 
@@ -96,10 +100,60 @@ TOOLS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "load_image",
+            "description": "Load a local image file so the LLM can see it.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "The path to the image file (JPEG, PNG, GIF, or WebP).",
+                    }
+                },
+                "required": ["path"],
+            },
+        },
+    },
 ]
 
 
-def _execute_tool(name, args):
+def _speak(client, text):
+    """
+    Use Groq TTS to convert text to speech and play it.
+
+    Saves a temporary WAV file then plays it with macOS `afplay` (or
+    `aplay` on Linux).  Silently skips playback if neither is available.
+    """
+    try:
+        response = client.audio.speech.create(
+            model='canopylabs/orpheus-v1-english',
+            voice='hannah',
+            input=text,
+            response_format='wav',
+        )
+        with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as tmp:
+            tmp_path = tmp.name
+            tmp.write(response.read())
+        for player in ('afplay', 'aplay'):
+            try:
+                subprocess.run([player, tmp_path], check=True,
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                break
+            except (FileNotFoundError, subprocess.CalledProcessError):
+                continue
+    except Exception as e:
+        print(f'[tts error] {e}')
+    finally:
+        try:
+            os.unlink(tmp_path)
+        except Exception:
+            pass
+
+
+def _execute_tool(name, args, messages=None):
     """
     Execute a named tool with the given arguments dict and return the result.
 
@@ -124,6 +178,10 @@ def _execute_tool(name, args):
         return tools.cat.cat(args['path'])
     elif name == 'grep':
         return tools.grep.grep(args['pattern'], args['path'])
+    elif name == 'load_image':
+        if messages is None:
+            return 'Error: load_image requires access to the messages list'
+        return tools.load_image.load_image(args['path'], messages)
     return f'Error: unknown tool {name}'
 
 
@@ -155,11 +213,14 @@ class Chat:
     True
     >>> Chat(use_tools=False)._tools is None
     True
+    >>> Chat(tts=True).tts
+    True
     '''
 
-    def __init__(self, debug=False, use_tools=True):
-        """Initialize the chat agent with optional debug and tool flags."""
+    def __init__(self, debug=False, use_tools=True, tts=False):
+        """Initialize the chat agent with optional debug, tool, and TTS flags."""
         self.debug = debug
+        self.tts = tts
         self._tools = TOOLS if use_tools else None
         self.client = Groq()
         self.messages = [
@@ -204,9 +265,16 @@ class Chat:
         """
         self.messages.append({'role': 'user', 'content': message})
         while True:
+            # Use vision-capable model when any message contains image content
+            has_image = any(
+                isinstance(m.get('content'), list)
+                for m in self.messages
+                if isinstance(m, dict)
+            )
+            model = 'meta-llama/llama-4-scout-17b-16e-instruct' if has_image else 'llama-3.1-8b-instant'
             kwargs = {
                 'messages': self.messages,
-                'model': 'llama-3.1-8b-instant',
+                'model': model,
                 'temperature': temperature,
             }
             if self._tools:
@@ -224,7 +292,7 @@ class Chat:
                     if name == 'compact':
                         result = self.compact()
                     else:
-                        result = _execute_tool(name, call_args)
+                        result = _execute_tool(name, call_args, messages=self.messages)
                     self.messages.append({
                         'role': 'tool',
                         'tool_call_id': tool_call.id,
@@ -235,6 +303,8 @@ class Chat:
                 self.messages.append(
                     {'role': 'assistant', 'content': result}
                 )
+                if self.tts:
+                    _speak(self.client, result)
                 return result
 
 
@@ -256,6 +326,10 @@ def _handle_slash_command(user_input, chat=None):
     'Error: grep requires a pattern and file path'
     >>> _handle_slash_command('/compact')
     'Error: compact requires an active chat session'
+    >>> _handle_slash_command('/load_image')
+    'Error: load_image requires a file path'
+    >>> _handle_slash_command('/load_image nonexistent.png')
+    'Error: file not found: nonexistent.png'
     >>> _handle_slash_command('/unknown arg')
     'Error: unknown command unknown'
     """
@@ -280,6 +354,12 @@ def _handle_slash_command(user_input, chat=None):
         if chat is None:
             return 'Error: compact requires an active chat session'
         return chat.compact()
+    elif cmd == 'load_image':
+        if not args:
+            return 'Error: load_image requires a file path'
+        if chat is None:
+            return 'Error: load_image requires an active chat session'
+        return tools.load_image.load_image(args[0], chat.messages)
     return f'Error: unknown command {cmd}'
 
 
@@ -303,7 +383,7 @@ def _make_completer():
     >>> completer('nonexistent_path_xyz', 0) is None
     True
     """
-    commands = ['calculate', 'cat', 'compact', 'grep', 'ls']
+    commands = ['calculate', 'cat', 'compact', 'grep', 'load_image', 'ls']
 
     def completer(text, state):
         if text.startswith('/'):
@@ -320,7 +400,7 @@ def _make_completer():
     return completer
 
 
-def repl(temperature=0.8, debug=False):
+def repl(temperature=0.8, debug=False, tts=False):
     """
     Run the interactive REPL supporting slash commands and LLM chat.
 
@@ -362,7 +442,7 @@ def repl(temperature=0.8, debug=False):
         readline.parse_and_bind('tab: complete')
     except ImportError:
         pass
-    chat = Chat(debug=debug)
+    chat = Chat(debug=debug, tts=tts)
     try:
         while True:
             user_input = input('chat> ')
@@ -383,12 +463,13 @@ def main():
     parser = argparse.ArgumentParser(description='Docchat: chat with documents')
     parser.add_argument('message', nargs='?', help='Message to send to the LLM')
     parser.add_argument('--debug', action='store_true', help='Print tool calls')
+    parser.add_argument('--tts', action='store_true', help='Read responses aloud using TTS')
     args = parser.parse_args()
     if args.message:
-        chat = Chat(debug=args.debug)
+        chat = Chat(debug=args.debug, tts=args.tts)
         print(chat.send_message(args.message))
     else:
-        repl(debug=args.debug)
+        repl(debug=args.debug, tts=args.tts)
 
 
 if __name__ == '__main__':
