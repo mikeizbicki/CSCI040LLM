@@ -8,7 +8,7 @@ def ls(path='.'):
     List files in a directory sorted asciibetically and return as a string.
 
     >>> ls('test_data')
-    'binary.bin\\nhello.txt\\nnumbers.txt\\nutf16.txt'
+    'binary.bin\\nhello.txt\\nnumbers.txt\\ntest.png\\nutf16.txt'
     >>> ls('/etc')
     'Error: path is not safe'
     >>> ls('../secret')

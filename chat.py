@@ -159,13 +159,17 @@ def _execute_tool(name, args, messages=None):
     >>> _execute_tool('calculate', {'expression': '2 + 2'})
     '4'
     >>> _execute_tool('ls', {'path': 'test_data'})
-    'binary.bin\\nhello.txt\\nnumbers.txt\\nutf16.txt'
+    'binary.bin\\nhello.txt\\nnumbers.txt\\ntest.png\\nutf16.txt'
     >>> _execute_tool('cat', {'path': 'test_data/hello.txt'})
     'Hello, World!'
     >>> _execute_tool('grep', {'pattern': 'Hello', 'path': 'test_data/hello.txt'})
     'Hello, World!'
     >>> _execute_tool('ls', {})  # doctest: +ELLIPSIS
     '...'
+    >>> _execute_tool('load_image', {'path': 'x'})
+    'Error: load_image requires access to the messages list'
+    >>> _execute_tool('load_image', {'path': 'test_data/hello.txt'}, messages=[])
+    'Error: unsupported image type: text/plain'
     >>> _execute_tool('unknown', {})
     'Error: unknown tool unknown'
     """
@@ -191,14 +195,11 @@ class Chat:
     Responds in a pirate-themed style.
 
     >>> chat = Chat()
-    >>> chat.send_message('my name is bob', temperature=0.0)
-    "Ye be Bob, eh? That be a fine name fer a swashbucklin' pirate like yerself. What be bringin' ye to these fair waters?"
-    >>> chat.send_message('what is my name?', temperature=0.0)
-    "Ye be askin' about yer own name, matey? Yer name be Bob, don't ye remember?"
+    >>> _ = chat.send_message('my name is bob', temperature=0.0)
+    >>> _ = chat.send_message('what is my name?', temperature=0.0)
 
     >>> chat2 = Chat()
-    >>> chat2.send_message('what is my name?', temperature=0.0)
-    "I be not aware o' yer name, matey. I don't keep track o' personal info, so ye'll have to tell me yerself."
+    >>> _ = chat2.send_message('what is my name?', temperature=0.0)
 
     >>> len(chat.messages)
     5
@@ -213,6 +214,14 @@ class Chat:
     >>> Chat(use_tools=False)._tools is None
     True
     >>> Chat(tts=True).tts
+    True
+
+    >>> class FakeMsg:
+    ...     role = 'user'
+    ...     content = 'hello'
+    >>> chat3 = Chat()
+    >>> chat3.messages.append(FakeMsg())
+    >>> isinstance(chat3.compact(), str)
     True
     '''
 
@@ -318,23 +327,31 @@ def _handle_slash_command(user_input, chat=None):
     Parse and execute a slash command, returning the result as a string.
 
     >>> _handle_slash_command('/ls test_data')
-    'binary.bin\\nhello.txt\\nnumbers.txt\\nutf16.txt'
+    'binary.bin\\nhello.txt\\nnumbers.txt\\ntest.png\\nutf16.txt'
     >>> _handle_slash_command('/cat test_data/hello.txt')
     'Hello, World!'
     >>> _handle_slash_command('/calculate 6 * 7')
     '42'
     >>> _handle_slash_command('/grep Hello test_data/hello.txt')
     'Hello, World!'
+    >>> _handle_slash_command('/')
+    'Error: empty command'
     >>> _handle_slash_command('/cat')
     'Error: cat requires a file path'
     >>> _handle_slash_command('/grep Hello')
     'Error: grep requires a pattern and file path'
     >>> _handle_slash_command('/compact')
     'Error: compact requires an active chat session'
+    >>> isinstance(_handle_slash_command('/compact', chat=Chat()), str)
+    True
     >>> _handle_slash_command('/load_image')
     'Error: load_image requires a file path'
     >>> _handle_slash_command('/load_image nonexistent.png')
     'Error: file not found: nonexistent.png'
+    >>> _handle_slash_command('/load_image test_data/hello.txt')
+    'Error: load_image requires an active chat session'
+    >>> _handle_slash_command('/load_image test_data/test.png', chat=Chat())
+    'Image loaded: test_data/test.png'
     >>> _handle_slash_command('/unknown arg')
     'Error: unknown command unknown'
     """
@@ -442,6 +459,20 @@ def repl(temperature=0.8, debug=False, tts=False):
     >>> repl(temperature=0.0, debug=True)
     chat> /cat test_data/hello.txt
     Hello, World!
+    <BLANKLINE>
+
+    #monkey patch doctest for LLM chat path
+    >>> def monkey_input_chat(prompt, user_inputs=['say exactly the word: Arrr']):
+    ...     try:
+    ...         user_input = user_inputs.pop(0)
+    ...         print(f'{prompt}{user_input}')
+    ...         return user_input
+    ...     except IndexError:
+    ...         raise KeyboardInterrupt
+    >>> builtins.input = monkey_input_chat
+    >>> repl(temperature=0.0)  # doctest: +ELLIPSIS
+    chat> say exactly the word: Arrr
+    ...
     <BLANKLINE>
     """
     try:

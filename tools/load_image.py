@@ -25,6 +25,13 @@ def load_image(path, messages):
     >>> msgs[0]['role']
     'user'
     >>> os.unlink(tmp.name)
+    >>> load_image('nonexistent_xyz.png', [])
+    'Error: file not found: nonexistent_xyz.png'
+    >>> tmp2 = tempfile.NamedTemporaryFile(suffix='.txt', delete=False)
+    >>> tmp2.close()
+    >>> load_image(tmp2.name, [])
+    'Error: unsupported image type: text/plain'
+    >>> os.unlink(tmp2.name)
     """
     if not os.path.isfile(path):
         return f'Error: file not found: {path}'
