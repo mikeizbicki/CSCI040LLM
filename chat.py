@@ -142,6 +142,15 @@ def _speak(client, text):
         with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as tmp:
             tmp_path = tmp.name
             tmp.write(response.read())
+        # this code is not "wrong", but it's not very robust;
+        # you are relying on the user having certain programs installed,
+        # and people on other systems are likely not to have these installed
+        # better is to use a pure python solution 
+        # (playsound is an easy to use library)
+        # the advantage is that you can just list it in your requirements.txt
+        # or pyproject.toml and then it will install automatically,
+        # then anyone who pip installs your program is guaranteed to have access
+        # like the other extra credits, fix this for next submission and I'll award the points
         for player in ('afplay', 'aplay'):
             try:
                 subprocess.run([player, tmp_path], check=True,
@@ -330,6 +339,12 @@ class Chat:
                 self.messages.append(
                     {'role': 'assistant', 'content': result}
                 )
+                # IMNSHO this is not the right location for the _speak function;
+                # instead, it should be the repl that is in charge of this task
+                # why?
+                # notice in your video that all the text gets printed after
+                # the audio finally plays;
+                # it would be better to print the text first and then play the audio
                 if self.tts:
                     _speak(self.client, result)
                 return result
